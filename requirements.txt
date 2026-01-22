@@ -1,6 +1,7 @@
-streamlit==1.28.0
-altair==4.2.2
+python-telegram-bot
 gspread
 oauth2client
 pandas
 plotly
+streamlit==1.28.0
+altair==4.2.2
