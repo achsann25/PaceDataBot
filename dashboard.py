@@ -3,6 +3,7 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import plotly.graph_objects as go
+import json
 
 # --- CONFIG DASHBOARD ---
 st.set_page_config(page_title="Running Analytics", layout="wide")
@@ -21,19 +22,22 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOAD DATA DARI GOOGLE SHEETS (CLOUD VERSION) ---
+# --- LOAD DATA DARI GOOGLE SHEETS ---
 def load_data():
     try:
-        # 1. Ambil dictionary dari Secrets Streamlit (GCP Service Account)
-        creds_dict = dict(st.secrets["gcp_service_account"])
+        # 1. Ambil string JSON mentah dari Secrets (Nama variabel: json_creds)
+        creds_raw = st.secrets["json_creds"]
+        
+        # 2. Ubah teks menjadi dictionary agar bisa dibaca library Google
+        creds_dict = json.loads(creds_raw)
         
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # 2. Login menggunakan dictionary, bukan file fisik
+        # 3. Login menggunakan dictionary
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         
-        # 3. Buka spreadsheet
+        # 4. Buka spreadsheet (Pastikan nama file sama persis)
         sheet = client.open("PaceDataBot").sheet1 
         
         data = sheet.get_all_records()
@@ -45,7 +49,7 @@ def load_data():
         # Konversi kolom Tanggal
         df['Tanggal'] = pd.to_datetime(df['Tanggal'])
         
-        # Fungsi bantu untuk konversi pace (MM:SS) ke total detik agar bisa diplot ke grafik
+        # Fungsi bantu konversi pace (MM:SS) ke total detik untuk grafik
         def p2s(p):
             try:
                 p_str = str(p).replace("'", ":")
@@ -60,12 +64,12 @@ def load_data():
         st.error(f"Koneksi Google Sheets Gagal: {e}")
         return pd.DataFrame()
 
-# --- MAIN DASHBOARD LOGIC ---
+# --- EKSEKUSI DASHBOARD ---
 df = load_data()
 
 if not df.empty:
     st.title("🏃‍♂️ Running Performance Analytics")
-    st.markdown(f"**User:** achsan | **Status:** Live Database Connected")
+    st.markdown(f"**User:** achsan | **Database:** Google Sheets Live")
     st.markdown("---")
 
     # --- ROW 1: METRICS ---
@@ -74,34 +78,33 @@ if not df.empty:
         total_dist = df['Jarak (KM)'].sum()
         st.metric("Total Jarak", f"{total_dist:.2f} KM")
     with col2:
-        # Cari pace terkecil (tercepat)
         valid_pace = df[df['pace_sec'] > 0]
         if not valid_pace.empty:
             best_p = valid_pace.iloc[valid_pace['pace_sec'].idxmin()]['Pace']
-            st.metric("Personal Best Pace", f"{best_p} /km")
+            st.metric("Best Pace", f"{best_p} /km")
         else:
-            st.metric("Personal Best Pace", "-")
+            st.metric("Best Pace", "-")
     with col3:
         st.metric("Avg HR", f"{int(df['HR'].mean())} BPM")
     with col4:
-        st.metric("Sesi Lari", f"{len(df)} Kali")
+        st.metric("Total Sesi", f"{len(df)} Kali")
 
     # --- ROW 2: CHART ---
     st.subheader("Pace & Heart Rate Trendline")
     
     fig = go.Figure()
 
-    # Garis Pace (Cyan) - Semakin kecil detiknya, semakin tinggi grafiknya (di-invert)
+    # Garis Pace (Cyan)
     fig.add_trace(go.Scatter(
         x=df['Tanggal'], 
         y=df['pace_sec'], 
         name='Pace (Detik)',
         line=dict(color='#00FFFF', width=4), 
         marker=dict(size=10),
-        hovertemplate='Tanggal: %{x}<br>Pace: %{y} detik<extra></extra>'
+        hovertemplate='Tanggal: %{x}<br>Pace: %{y}s/km<extra></extra>'
     ))
 
-    # Garis Heart Rate (Orange) - Y-Axis sebelah kanan
+    # Garis Heart Rate (Orange) - Y-Axis Kanan
     fig.add_trace(go.Scatter(
         x=df['Tanggal'], 
         y=df['HR'], 
@@ -111,7 +114,6 @@ if not df.empty:
         hovertemplate='Tanggal: %{x}<br>HR: %{y} BPM<extra></extra>'
     ))
 
-    # Layout Dashboard Styling
     fig.update_layout(
         template="plotly_dark",
         paper_bgcolor='rgba(0,0,0,0)',
