@@ -1,6 +1,6 @@
-python-telegram-bot
+streamlit==1.28.0
+altair==4.2.2
 gspread
 oauth2client
 pandas
-streamlit
 plotly
